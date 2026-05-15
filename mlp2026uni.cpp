@@ -107,8 +107,8 @@ void BForward(int ns[], double out[][BS][NMAX], double woi[][NMAX][NMAX], double
 				for (b = 0; b < BS; b++) net[l][j][b] = myu[b];
 
 				BatchNormF(net[l][j], myu, &mean[l][j], &var[l][j], gamma[l][j], beta[l][j]);
-				mmean[l][j] = mmean[l][j] * 0.9 + mmean[l][j] * 0.1;
-				mvar[l][j] = mvar[l][j] * 0.9 + mvar[l][j] * 0.1;
+				mmean[l][j] = mmean[l][j] * 0.9 + mean[l][j] * 0.1;
+				mvar[l][j] = mvar[l][j] * 0.9 + var[l][j] * 0.1;
 			}
 			for (b = 0; b < BS; b++) {
 				if (hact == RELU) {
@@ -334,11 +334,9 @@ void BBackProp(int ns[], double out[][BS][NMAX], double Tk[BS][OD], double delta
 void BatchNormF(double net[], double myu[], double* mean, double* var, double gamma, double beta) {
 	double sum, ave,sqvar;
 	int b;
-	for (sum = 0, b = 0; b < BS; b++) {
-
-		ave = sum / BS;
-		*mean = ave;
-	}
+	for (sum = 0, b = 0; b < BS; b++) sum += net[b];
+	ave = sum / BS;
+	*mean = ave;
 	for (sum = 0, b = 0; b < BS; b++) sum += (net[b] - ave) * (net[b] - ave);
 	*var = sum / BS;
 
@@ -348,10 +346,19 @@ void BatchNormF(double net[], double myu[], double* mean, double* var, double ga
 		myu[b] = gamma * ((net[b] - ave) / sqvar) + beta;
 }
 void BatchNormB(double net[], double delta[], double mean, double var, double* gamma, double* beta, double eta) {
-	double dg, db;
-
-
-
+	double dg=0.0, db=0.0;
+	double sqvar = sqrt(var + EPS);
+	double x_hat[BS], d12a[BS], d3a[BS];;
+	double sum_d = 0.0, sum_xhat_d = 0.0;//y‚©‚ç1ŒÂ‘O‚Ì‚â‚Â
+	int b;
+	for (b = 0; b < BS; b++)x_hat[b] = (net[b] - mean) / sqvar;
+	for (b = 0; b < BS; b++) {
+		dg += delta[b] * x_hat[b];
+		db += delta[b];
+	}
+	for (b = 0; b < BS; b++)d12a[b] = delta[b] *(*gamma);
+	for (b = 0; b < BS; b++)sum_d += d12a[b] * (*gamma) * x_hat[b];
+	for (b = 0; b < BS; b++)delta[b] = (d12a[b] - sum_d / BS - x_hat[b] * sum_xhat_d / BS) / sqvar;
 	*gamma += -eta * dg;
 	*beta += -eta * db / BS;
 }
