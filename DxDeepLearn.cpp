@@ -17,7 +17,7 @@
 #define GR 65280				//緑
 #define BL 255					//青
 //*-------------------- Setting --------------------*//
-#define EMAX 10					// Epoch数
+#define EMAX 30					// Epoch数
 #define LOOP 1					// 試行回数
 //*-------------------- Cosine Decay --------------------*//
 #define CDECAY 0				// 0:通常 1:cosine decay
@@ -40,9 +40,12 @@ double Woi[L - 1][NMAX][NMAX], Bj[L - 1][NMAX];
 //int Ns[L] = { ID, NMAX, NMAX / 2, OD }; //L = 4
 int Ns[L] = { ID, NMAX,OD }; //L = 3
 
-int Hact = SIGMOID, Oact = SIGMOID;
-//int Hact = RELU, Oact = SOFTCROSS;
+//int Hact = SIGMOID,Oact = SIGMOID;
+//int Hact = SIGMOID, Oact = SOFTCROSS;
+int Hact = RELU, Oact = SOFTCROSS;
 double BOut[L][BS][NMAX], BTk[BS][OD], BDelta[L][NMAX][BS];
+double Net[L][NMAX][BS], Mean[L][NMAX], Var[L][NMAX], Beta[L][NMAX], Gamma[L][NMAX];
+double MMean[L][NMAX], MVar[L][NMAX];
 void Display();
 void SetData(char traName[], char tesName[], double traData[][ID], double tesData[][ID],
 	int traClass[], int tesClass[]);
@@ -55,7 +58,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_  HINSTANCE hPrevInstance, 
 	//srand((unsigned int)time(NULL));
 	srand(1);
 	SetData(TraName, TesName, TraData, TesData, TraClass, TesClass);
-	InitW(Ns, Woi, Bj);
+	InitW(Ns, Woi, Bj, Beta, Gamma);
 
 	SetGraphMode(1200, 800, 32);	//画面モードの設定	
 	SetBackgroundColor(255, 255, 255);
@@ -72,7 +75,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_  HINSTANCE hPrevInstance, 
 			GetMousePoint(&MouseX, &MouseY); //マウスの位置を取得
 			if (MouseX < MENUX) { // Menu area click
 				if (MouseY < MENUY) break;				//END
-				else if (MouseY < MENUY * 2) 	InitW(Ns, Woi, Bj);//NN初期化
+				else if (MouseY < MENUY * 2) 	InitW(Ns, Woi, Bj, Beta, Gamma);//NN初期化
 				else if (MouseY < MENUY * 3) { //Input
 					In = (rand() / (RAND_MAX + 1.0)) * TRA;
 					//if (NETMODEL == 1) {//CNN
@@ -82,12 +85,12 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_  HINSTANCE hPrevInstance, 
 					//}
 					//else 
 					for (j = 0; j < ID; j++) Out[0][j] = TraData[In][j];//MLP
-					Forward(Ns, Out, Woi, Bj, Hact, Oact);
+					Forward(Ns, Out, Woi, Bj, Hact, Oact, MMean, MVar, Gamma, Beta);
 				}
 				else if (MouseY < MENUY * 4)DeepLearn(); //Learn
 				else if (MouseY < MENUY * 5) {
 					for (Tr = 0; Tr < LOOP; Tr++) {
-						InitW(Ns, Woi, Bj);
+						InitW(Ns, Woi, Bj, Beta, Gamma);
 						DeepLearn(); //Learn
 					}
 				}
@@ -372,8 +375,8 @@ void DeepLearn() {
 				}
 			
 				else {*/
-					BForward(Ns, BOut, Woi, Bj, Oact, Hact);
-					BBackProp(Ns, BOut, BTk, BDelta, Woi, Bj, Lrate, Oact, Hact);
+					BForward(Ns, BOut, Woi, Bj, Oact, Hact,Net,Mean, Var, Gamma, Beta, MMean, MVar);
+					BBackProp(Ns, BOut, BTk, BDelta, Woi, Bj, Lrate, Oact, Hact, Net, Mean, Var, Gamma, Beta);
 				//}
 
 				for (b = 0; b < BS; b++) {
@@ -400,7 +403,7 @@ void DeepLearn() {
 				//}
 				//else {//MLP
 				for (j = 0; j < ID; j++) Out[0][j] = TraData[In][j];
-				Forward(Ns, Out, Woi, Bj, Oact, Hact);
+				Forward(Ns, Out, Woi, Bj, Oact, Hact, MMean, MVar, Gamma, Beta);
 				BackProp(Ns, Out, Tk, Delta, Woi, Bj, Lrate, Oact, Hact);
 
 
@@ -421,7 +424,9 @@ void DeepLearn() {
 				//}
 				//else {//MLP
 				for (j = 0; j < ID; j++) Out[0][j] = TesData[t][j];
-				Forward(Ns, Out, Woi, Bj,Oact,Hact);
+				Forward(Ns, Out, Woi, Bj,Oact,Hact, MMean, MVar, Gamma, Beta);
+				
+				
 				//}
 
 				for (i = 0, j = 1; j < OD; j++) {
