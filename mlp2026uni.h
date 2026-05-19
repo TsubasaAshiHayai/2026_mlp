@@ -13,7 +13,7 @@
 
 
 
-void InitW(int ns[], double woi[][NMAX][NMAX], double bj[][NMAX],double beta[][NMAX], double gamma[][NMAX]);
+void InitW(int ns[], double woi[][NMAX][NMAX], double bj[][NMAX],double beta[][NMAX], double gamma[][NMAX], double mmean[][NMAX], double mvar[][NMAX]);
 void Forward(int ns[], double out[][NMAX], double woi[][NMAX][NMAX], double bj[][NMAX], int oact, int hact, double mmean[][NMAX], double mvar[][NMAX], double gamma[][NMAX], double beta[][NMAX]);
 void BackProp(int ns[], double out[][NMAX], double Tk[], double delta[][NMAX], double woi[][NMAX][NMAX], double bj[][NMAX],double eta, int oact, int hact);
 

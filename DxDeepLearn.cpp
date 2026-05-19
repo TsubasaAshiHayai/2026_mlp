@@ -58,7 +58,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_  HINSTANCE hPrevInstance, 
 	//srand((unsigned int)time(NULL));
 	srand(1);
 	SetData(TraName, TesName, TraData, TesData, TraClass, TesClass);
-	InitW(Ns, Woi, Bj, Beta, Gamma);
+	InitW(Ns, Woi, Bj, Beta, Gamma, MMean, MVar);
 
 	SetGraphMode(1200, 800, 32);	//画面モードの設定	
 	SetBackgroundColor(255, 255, 255);
@@ -75,7 +75,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_  HINSTANCE hPrevInstance, 
 			GetMousePoint(&MouseX, &MouseY); //マウスの位置を取得
 			if (MouseX < MENUX) { // Menu area click
 				if (MouseY < MENUY) break;				//END
-				else if (MouseY < MENUY * 2) 	InitW(Ns, Woi, Bj, Beta, Gamma);//NN初期化
+				else if (MouseY < MENUY * 2) 	InitW(Ns, Woi, Bj, Beta, Gamma, MMean, MVar);//NN初期化
 				else if (MouseY < MENUY * 3) { //Input
 					In = (rand() / (RAND_MAX + 1.0)) * TRA;
 					//if (NETMODEL == 1) {//CNN
@@ -90,7 +90,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_  HINSTANCE hPrevInstance, 
 				else if (MouseY < MENUY * 4)DeepLearn(); //Learn
 				else if (MouseY < MENUY * 5) {
 					for (Tr = 0; Tr < LOOP; Tr++) {
-						InitW(Ns, Woi, Bj, Beta, Gamma);
+						InitW(Ns, Woi, Bj, Beta, Gamma, MMean, MVar);
 						DeepLearn(); //Learn
 					}
 				}

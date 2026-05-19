@@ -4,9 +4,9 @@
 #include "optidigit.h"
 #include "mlp2026uni.h"
 
-double dwoi[L - 1][NMAX][NMAX], dbj[L - 1][NMAX];//修正量
+double dwoi[L - 1][NMAX][NMAX], dbj[L - 1][NMAX];
 
-void InitW(int ns[], double woi[][NMAX][NMAX], double bj[][NMAX],double beta[][NMAX],double gamma[][NMAX]) {
+void InitW(int ns[], double woi[][NMAX][NMAX], double bj[][NMAX],double beta[][NMAX],double gamma[][NMAX], double mmean[][NMAX], double mvar[][NMAX]) {
 	int l, j, i,k;
 	for (l = 0; l < L - 1; l++) {
 		for (j = 0; j < ns[l + 1]; j++) {
@@ -19,7 +19,9 @@ void InitW(int ns[], double woi[][NMAX][NMAX], double bj[][NMAX],double beta[][N
 
 	for (l = 0; l < L; l++) {
 		for (j = 0; j < ns[l + 1]; j++) {
-			beta[l][j] = 0, gamma[l][j] = 0;
+			beta[l][j] = 0, gamma[l][j] = 1;
+			mmean[l][j] = 0;
+			mvar[l][j] = 1;
 		}
 	}
 }
@@ -36,7 +38,7 @@ void Forward(int ns[], double out[][NMAX], double woi[][NMAX][NMAX], double bj[]
 
 			if (BATCHLEARN && BATCHNORM) {
 
-				myu=gamma[l][j]* (myu - mmean[l][j]) / sqrt(mvar[l][j] + EPS) + beta[l][j];
+				myu=gamma[l][j]* (myu - mmean[l][j]) / sqrt(mvar[l][j] + EPS)+ beta[l][j];
 
 			}
 
@@ -70,7 +72,7 @@ void Forward(int ns[], double out[][NMAX], double woi[][NMAX][NMAX], double bj[]
 			sum += out[l + 1][j];
 		}
 		for (j = 0; j < ns[l + 1]; j++) {
-			out[l + 1][j] /= sum;//ここも修正
+			out[l + 1][j] /= sum;
 		}
 	
 	}
@@ -105,10 +107,11 @@ void BForward(int ns[], double out[][BS][NMAX], double woi[][NMAX][NMAX], double
 			//batsch noralization
 			if (BATCHNORM) {
 				for (b = 0; b < BS; b++) net[l][j][b] = myu[b];
-
+				
 				BatchNormF(net[l][j], myu, &mean[l][j], &var[l][j], gamma[l][j], beta[l][j]);
 				mmean[l][j] = mmean[l][j] * 0.9 + mean[l][j] * 0.1;
 				mvar[l][j] = mvar[l][j] * 0.9 + var[l][j] * 0.1;
+				
 			}
 			for (b = 0; b < BS; b++) {
 				if (hact == RELU) {
@@ -285,7 +288,6 @@ void BBackProp(int ns[], double out[][BS][NMAX], double Tk[BS][OD], double delta
 		}
 		
 	}
-	//先生バージョン
 	for (l = L - 2; l > 0; l--) {
 		for (j = 0; j < ns[l]; j++) {
 			for (b = 0; b < BS; b++) {
@@ -300,15 +302,18 @@ void BBackProp(int ns[], double out[][BS][NMAX], double Tk[BS][OD], double delta
 				else {
 					delta[l][j][b] *= out[l][b][j] * (1.0 - out[l][b][j]);
 				}
+			}
+			if (BATCHNORM) {
+				//BN back
+				BatchNormB(net[l - 1][j], delta[l][j], mean[l - 1][j], var[l - 1][j], &gamma[l - 1][j], &beta[l - 1][j], eta);
+			}
 
-				if (BATCHNORM) {
-					//BN back
-					BatchNormB(net[l - 1][j], delta[l][j], mean[l - 1][j], var[l - 1][j], &gamma[l - 1][j], &beta[l - 1][j], eta);
-				}
+			for (b = 0; b < BS; b++) {
 				for (i = 0; i < ns[l - 1]; i++) {
 					dwoi[l - 1][j][i] += -eta * delta[l][j][b] * out[l - 1][b][i];
 				}
 				dbj[l - 1][j] += -eta * delta[l][j][b];
+
 			}
 		}
 	}
@@ -342,26 +347,35 @@ void BatchNormF(double net[], double myu[], double* mean, double* var, double ga
 
 	sqvar = sqrt(*var + EPS);
 
-	for (sum = 0, b = 0; b < BS; b++)
-		myu[b] = gamma * ((net[b] - ave) / sqvar) + beta;
+	for (sum = 0, b = 0; b < BS; b++)myu[b] = gamma * ((net[b] - ave) / sqvar) + beta;
 }
 void BatchNormB(double net[], double delta[], double mean, double var, double* gamma, double* beta, double eta) {
 	double dg=0.0, db=0.0;
 	double sqvar = sqrt(var + EPS);
-	double x_hat[BS], d12a[BS], d3a[BS];;
+	double x_hat[BS], d12a[BS];
 	double sum_d = 0.0, sum_xhat_d = 0.0;//yから1個前のやつ
 	int b;
-	for (b = 0; b < BS; b++)x_hat[b] = (net[b] - mean) / sqvar;
+	
 	for (b = 0; b < BS; b++) {
+		x_hat[b] = (net[b] - mean) / sqvar;
 		dg += delta[b] * x_hat[b];
 		db += delta[b];
 	}
-	for (b = 0; b < BS; b++)d12a[b] = delta[b] *(*gamma);
-	for (b = 0; b < BS; b++)sum_d += d12a[b] * (*gamma) * x_hat[b];
-	for (b = 0; b < BS; b++)delta[b] = (d12a[b] - sum_d / BS - x_hat[b] * sum_xhat_d / BS) / sqvar;
-	*gamma += -eta * dg;
+	//更新したガンマを使うと先生と一緒になる．
+	//*gamma += -eta * dg/BS;
+	//*beta += -eta * db / BS;
+
+	for (b = 0; b < BS; b++) {
+		d12a[b] = delta[b] * (*gamma);
+		sum_d += d12a[b];
+		sum_xhat_d += d12a[b] * x_hat[b]; 
+	
+	}
+	for (b = 0; b < BS; b++)delta[b] = ((d12a[b] - sum_d )/ BS - (x_hat[b] * sum_xhat_d) / BS) / sqvar;
+	*gamma += -eta * dg / BS;
 	*beta += -eta * db / BS;
+	
+
+
+
 }
-
-
-//関数の引数修正InitWとかmmeanなど
